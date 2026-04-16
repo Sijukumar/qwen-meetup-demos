@@ -1,0 +1,12 @@
+cd /Users/sijukumarkumaran/Documents/Hands-On/QwenMeetup/Demos/mcp_demo
+
+# Run install
+chmod +x install.sh
+./install.sh
+
+# Navigate to the project
+cd /Users/sijukumarkumaran/Documents/Hands-On/QwenMeetup/Demos/mcp_demo
+
+# Start demo
+source venv/bin/activate
+python mcp_demo.py

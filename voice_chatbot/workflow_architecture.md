@@ -1,0 +1,376 @@
+# Voice Chatbot - Execution Workflow & Architecture
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Voice Chatbot Architecture                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         User Interface                               │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │   │
+│  │  │  Text Input  │  │ Voice Record │  │   Settings   │              │   │
+│  │  │   (Type)     │  │  (Microphone)│  │  (API Key)   │              │   │
+│  │  └──────┬───────┘  └──────┬───────┘  └──────────────┘              │   │
+│  │         │                 │                                        │   │
+│  │         └────────┬────────┘                                        │   │
+│  │                  │                                                 │   │
+│  │                  ▼                                                 │   │
+│  │         ┌─────────────────┐                                        │   │
+│  │         │  Audio Capture  │                                        │   │
+│  │         │  (PyAudio)      │                                        │   │
+│  │         └────────┬────────┘                                        │   │
+│  └──────────────────┼─────────────────────────────────────────────────┘   │
+│                     │                                                      │
+│                     ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                    Processing Pipeline                               │   │
+│  │                                                                      │   │
+│  │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐  │   │
+│  │  │   ASR (Speech   │    │   LLM (Chat     │    │   TTS (Text     │  │   │
+│  │  │   to Text)      │───▶│   Completion)   │───▶│   to Speech)    │  │   │
+│  │  │                 │    │                 │    │                 │  │   │
+│  │  │  qwen-asr-flash │    │   qwen-plus     │    │  qwen-tts-flash │  │   │
+│  │  └─────────────────┘    └─────────────────┘    └─────────────────┘  │   │
+│  │           │                    │                      │             │   │
+│  │           │                    │                      │             │   │
+│  │           ▼                    ▼                      ▼             │   │
+│  │    Audio ──▶ Text ──▶ Response ──▶ Audio                            │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                     │                                                      │
+│                     ▼                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         Output                                       │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │   │
+│  │  │ Text Display │  │ Audio Playback│  │ Conversation │              │   │
+│  │  │  (Terminal)  │  │  (Speakers)   │  │   History    │              │   │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘              │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Execution Workflow
+
+### 1. Initialization Phase
+```
+┌─────────────┐
+│   Start     │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────┐
+│ Load .env variables │
+│ - DASHSCOPE_API_KEY │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Initialize DashScope│
+│ - api_key           │
+│ - base_url          │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Initialize PyAudio  │
+│ - audio input       │
+│ - audio output      │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Display Welcome     │
+│ Message             │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Show Menu Options   │
+│ 1. Type message     │
+│ 2. Record voice     │
+│ 3. Settings         │
+│ 4. Quit             │
+└─────────────────────┘
+```
+
+### 2. User Input Phase
+```
+┌─────────────────────┐
+│   Display Menu      │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   Get User Choice   │
+└──────────┬──────────┘
+           │
+     ┌─────┴─────┬─────────┬─────────┐
+     │           │         │         │
+     ▼           ▼         ▼         ▼
+┌────────┐ ┌──────────┐ ┌────────┐ ┌────────┐
+│  Type  │ │  Record  │ │Settings│ │  Quit  │
+│Message │ │  Voice   │ │        │ │        │
+└───┬────┘ └────┬─────┘ └───┬────┘ └───┬────┘
+    │           │           │          │
+    ▼           ▼           ▼          ▼
+┌─────────────────┐ ┌─────────────────┐
+│ Read Text Input │ │ Capture Audio   │
+│ from Keyboard   │ │ from Microphone │
+└────────┬────────┘ └────────┬────────┘
+         │                   │
+         └─────────┬─────────┘
+                   │
+                   ▼
+         ┌─────────────────┐
+         │ Process Input   │
+         │ (ASR if audio)  │
+         └─────────────────┘
+```
+
+### 3. ASR Processing Phase (Voice Input)
+```
+┌─────────────────────┐
+│ Audio Recording     │
+│ Complete            │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Send to DashScope   │
+│ ASR API             │
+│                     │
+│ qwen-asr-flash      │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Receive Transcribed │
+│ Text                │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Display Transcript  │
+│ to User             │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Pass to LLM         │
+│ Processing          │
+└─────────────────────┘
+```
+
+### 4. LLM Processing Phase
+```
+┌─────────────────────┐
+│ Build Conversation  │
+│ Context             │
+│ (History + New)     │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Send to DashScope   │
+│ Chat API            │
+│                     │
+│ qwen-plus           │
+│                     │
+│ Messages:           │
+│ - system prompt     │
+│ - user message      │
+│ - conversation hist │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Receive AI Response │
+│ (Text)              │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Display Response    │
+│ to User             │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Pass to TTS         │
+│ (if enabled)        │
+└─────────────────────┘
+```
+
+### 5. TTS Processing Phase
+```
+┌─────────────────────┐
+│ AI Response Text    │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Send to DashScope   │
+│ TTS API             │
+│                     │
+│ qwen-tts-flash      │
+│                     │
+│ Parameters:         │
+│ - text              │
+│ - voice type        │
+│ - speed             │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Receive Audio Data  │
+│ (MP3/PCM)           │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Play Audio through  │
+│ PyAudio             │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Return to Menu      │
+└─────────────────────┘
+```
+
+## Data Flow Summary
+
+```
+Voice Mode:
+┌─────────┐    ┌────────┐    ┌────────┐    ┌────────┐    ┌─────────┐
+│  User   │───▶│  ASR   │───▶│  LLM   │───▶│  TTS   │───▶│  Audio  │
+│  Speech │    │  API   │    │  API   │    │  API   │    │  Output │
+└─────────┘    └────────┘    └────────┘    └────────┘    └─────────┘
+                    │             │
+                    ▼             ▼
+               ┌─────────────────────────┐
+               │    Text Display         │
+               │    (Conversation)       │
+               └─────────────────────────┘
+
+Text Mode:
+┌─────────┐    ┌────────┐    ┌────────┐    ┌─────────┐
+│  User   │───▶│  LLM   │───▶│  TTS   │───▶│  Audio  │
+│  Text   │    │  API   │    │  API   │    │  Output │
+└─────────┘    └────────┘    └────────┘    └─────────┘
+                    │
+                    ▼
+               ┌─────────────────────────┐
+               │    Text Display         │
+               └─────────────────────────┘
+```
+
+## Key Components
+
+### 1. DashScope APIs Used
+| API | Model | Purpose |
+|-----|-------|---------|
+| **ASR** | `qwen-asr-flash` | Speech-to-Text |
+| **Chat** | `qwen-plus` | Conversation logic |
+| **TTS** | `qwen-tts-flash` | Text-to-Speech |
+
+### 2. Audio Pipeline
+| Component | Library | Function |
+|-----------|---------|----------|
+| Audio Input | `PyAudio` | Record from microphone |
+| Audio Output | `PyAudio` | Play to speakers |
+| Audio Processing | `numpy` | Audio data handling |
+
+### 3. Request/Response Flow
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Record    │────▶│   ASR API   │────▶│  Get Text   │
+│   Audio     │     │   Request   │     │  Response   │
+└─────────────┘     └─────────────┘     └─────────────┘
+
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Send      │────▶│  Chat API   │────▶│  AI Text    │
+│   Text      │     │   Request   │     │  Response   │
+└─────────────┘     └─────────────┘     └─────────────┘
+
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Send      │────▶│   TTS API   │────▶│  Audio      │
+│   Text      │     │   Request   │     │  Response   │
+└─────────────┘     └─────────────┘     └─────────────┘
+```
+
+## File Structure
+
+```
+voice_chatbot/
+├── simple_voice_chat.py      # Main application
+├── install.sh                # Installation script
+├── requirements.txt          # Python dependencies
+├── .env                      # Environment variables
+├── quoder_prompt_voice_chatbot.txt  # Prompt template
+└── readme.txt                # Quick readme
+```
+
+## Environment Variables
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `DASHSCOPE_API_KEY` | API authentication | Yes |
+| `DASHSCOPE_BASE_URL` | API endpoint | Optional |
+
+## Dependencies
+
+```
+dashscope>=1.20.0      # Alibaba Cloud AI SDK
+openai>=1.0.0          # OpenAI-compatible API
+pyaudio>=0.2.11        # Audio I/O
+numpy>=1.21.0          # Audio processing
+python-dotenv>=1.0.0   # Environment variables
+```
+
+## Usage Flow
+
+```
+1. Start: python simple_voice_chat.py
+2. Choose mode:
+   - [1] Type message
+   - [2] Record voice
+   - [3] Settings
+   - [4] Quit
+3. For voice: Hold to record, release to send
+4. Wait: ASR → LLM → TTS processing
+5. Hear/Read: AI response plays automatically
+6. Repeat: Continue conversation or quit
+```
+
+## Error Handling
+
+| Error Type | Handling |
+|------------|----------|
+| **API Key Missing** | Exit with error message |
+| **ASR Failed** | Display error, return to menu |
+| **LLM Failed** | Display error, return to menu |
+| **TTS Failed** | Display text only, return to menu |
+| **Audio Error** | Display error, suggest text mode |
+| **Keyboard Interrupt** | Graceful exit |
+
+## Timing Characteristics
+
+| Phase | Typical Duration |
+|-------|-----------------|
+| Audio Recording | User-controlled |
+| ASR Processing | 1-3 seconds |
+| LLM Response | 2-5 seconds |
+| TTS Generation | 1-3 seconds |
+| Audio Playback | Duration of speech |
+| **Total (Voice)** | **5-15 seconds** |
+
+## Security Considerations
+
+1. **API Key**: Stored in `.env` file
+2. **Audio Data**: Processed in-memory, not stored
+3. **Conversation History**: Stored locally in session
+4. **Microphone Access**: Requires user permission

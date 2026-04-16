@@ -1,0 +1,91 @@
+The **omni_model** project demonstrates **Qwen3-Omni**, Alibaba Cloud's flagship multimodal AI model.
+
+## What is Qwen3-Omni?
+
+Qwen3-Omni is an **end-to-end multimodal model** that processes multiple input types simultaneously and outputs both text and speech in a single neural network.
+
+## Key Capabilities Demonstrated
+
+| Feature | What It Does |
+|---------|--------------|
+| **Text Input/Output** | Chat with AI through text |
+| **Image Analysis** | Show an image and ask questions about it |
+| **Audio Output** | AI speaks responses with human-like voice |
+| **Streaming** | Real-time text generation as you watch |
+| **Hybrid Thinking** | Toggle between fast chat and deep reasoning modes |
+
+## How It Works
+
+```
+User Input (Text or Image + Text)
+           ↓
+    Qwen3-Omni Model
+           ↓
+    ┌─────────────┐
+    │ Text Output │ → Streamed to console
+    │ Audio Output│ → Saved as response.wav & played
+    └─────────────┘
+```
+
+## Use Cases
+
+1. **Visual Q&A** - Upload a photo, ask "What's in this image?"
+2. **Voice Assistant** - Get spoken responses while reading text
+3. **Accessibility** - Audio output for visually impaired users
+4. **Multimodal Learning** - Show diagrams, get explanations
+
+## Technical Highlights
+
+- **Model**: `qwen3-omni-flash`
+- **API**: OpenAI-compatible Chat Completions
+- **Streaming**: Mandatory (`stream=True`)
+- **Audio Format**: WAV (converted from raw PCM)
+- **Voices**: Cherry, Dylan, and 40+ others
+- **Languages**: 10+ languages supported
+
+## Example Interaction
+
+```
+You: /image sunset.jpg Describe this scene
+
+AI: [Text] This is a beautiful sunset over the ocean...
+     [Audio] 🔊 (spoken response plays automatically)
+```
+
+The demo shows how a single model can handle vision, language, and speech together - no separate pipelines needed.
+
+
+
+Yes, that is **correct**, but with a few important nuances based on the documentation (specifically `MS-Overview-4.pdf` and `MS-Overview-7.pdf`).
+
+Here is the precise breakdown of the **Qwen3-Omni** capabilities:
+
+### 1. Inputs (What it receives)
+It accepts **multimodal combinations** in a single request. You can send:
+*   **Text** alone.
+*   **Text + Image**.
+*   **Text + Audio**.
+*   **Text + Video** (as a file or a sequence of frames).
+*   *Note:* In a single user message, you can combine text with **one** other modality (image, audio, or video).
+
+### 2. Outputs (What it generates)
+It can generate **Text AND Audio simultaneously**.
+*   **Text:** A written response.
+*   **Audio:** A spoken response (streaming) with natural emotion and intonation.
+*   **Mode:** You must specify `modalities=["text", "audio"]` in your API call to get both. If you only want text, you set `modalities=["text"]`.
+
+### 3. Critical Constraints (Important for your Demo)
+*   **Streaming is Mandatory:** The Omni model **only** supports streaming output (`stream=True`). You cannot make a standard non-streaming call.
+*   **Thinking Mode Limitation:**
+    *   If you enable **Deep Thinking** (`enable_thinking=true`), the model **cannot output audio**. It will only output text (and the reasoning process).
+    *   To get **Audio + Text**, you must run in **Non-Thinking mode** (default).
+*   **System Messages:** When using audio output modes, some older Omni versions had restrictions on system messages, but Qwen3-Omni-Flash generally handles them well as long as thinking mode is off.
+
+### Summary for your Workshop Slide:
+> **"Qwen3-Omni: True Omni-Modal Interaction"**
+> *   **Input:** Text, Image, Audio, Video (Mixed).
+> *   **Output:** Simultaneous Text + Human-like Speech.
+> *   **Latency:** Ultra-low latency (<3s) for real-time conversation.
+> *   **Requirement:** Streaming mode required; Audio output disabled during deep reasoning tasks.
+
+This makes it perfect for your **"Real-Time Multimodal Analyst"** demo scenario where a user shows an image and asks a question, getting an immediate spoken answer.

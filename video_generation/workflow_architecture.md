@@ -1,0 +1,361 @@
+# Video Generation - Execution Workflow & Architecture
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Video Generation Architecture                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐                │
+│  │   User Input │────▶│   Prompt     │────▶│   DashScope  │                │
+│  │   (CLI)      │     │   Processing │     │   API Client │                │
+│  └──────────────┘     └──────────────┘     └──────┬───────┘                │
+│         │                                          │                        │
+│         │                                          ▼                        │
+│         │                              ┌─────────────────────┐             │
+│         │                              │  Video Synthesis    │             │
+│         │                              │  API (Async)        │             │
+│         │                              └──────────┬──────────┘             │
+│         │                                         │                        │
+│         │                                         ▼                        │
+│         │                              ┌─────────────────────┐             │
+│         │                              │  Task Submission    │             │
+│         │                              │  Returns Task ID    │             │
+│         │                              └──────────┬──────────┘             │
+│         │                                         │                        │
+│         │                              ┌──────────┴──────────┐             │
+│         │                              │                     │             │
+│         │                              ▼                     ▼             │
+│         │                    ┌───────────────┐    ┌───────────────┐        │
+│         │                    │  PENDING      │───▶│  RUNNING      │        │
+│         │                    │  (queued)     │    │  (processing) │        │
+│         │                    └───────────────┘    └───────┬───────┘        │
+│         │                                                 │                │
+│         │                              ┌──────────────────┴────────┐       │
+│         │                              │                           │       │
+│         │                              ▼                           ▼       │
+│         │                    ┌───────────────┐          ┌───────────────┐   │
+│         │                    │   SUCCEEDED   │          │    FAILED     │   │
+│         │                    │  (complete)   │          │   (error)     │   │
+│         │                    └───────┬───────┘          └───────────────┘   │
+│         │                            │                                    │
+│         ▼                            ▼                                    │
+│  ┌──────────────────────────────────────────────────────────┐             │
+│  │              Video Download & Save                        │             │
+│  │  - HTTP GET request to video URL                         │             │
+│  │  - Stream download to local file                         │             │
+│  │  - Save as generated_video.mp4                           │             │
+│  └────────────────────────────┬─────────────────────────────┘             │
+│                               │                                            │
+│                               ▼                                            │
+│  ┌──────────────────────────────────────────────────────────┐             │
+│  │              User Display (Terminal)                      │             │
+│  │  - Success message with file path                        │             │
+│  │  - Video URL for reference                               │             │
+│  │  - Loop back for next prompt                             │             │
+│  └──────────────────────────────────────────────────────────┘             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Execution Workflow
+
+### 1. Initialization Phase
+```
+┌─────────────┐
+│   Start     │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────┐
+│ Load Configuration  │
+│ - API_KEY (from     │
+│   hardcoded/.env)   │
+│ - BASE_URL          │
+│ - MODEL (wan2.6-t2v)│
+│ - OUTPUT_FILE       │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Display Welcome     │
+│ Message &           │
+│ Instructions        │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│   Wait for User     │
+│   Prompt Input      │
+└─────────────────────┘
+```
+
+### 2. User Input & Validation Phase
+```
+┌─────────────────────┐
+│   User Enters       │
+│   Video Prompt      │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Check for Exit      │
+│ Commands            │
+│ (quit/exit/q)       │
+└──────────┬──────────┘
+           │
+    ┌──────┴──────┐
+    │             │
+    ▼             ▼
+┌────────┐   ┌─────────────────┐
+│ Exit   │   │ Check if Empty  │
+│ Program│   │ (use default)   │
+└────────┘   └────────┬────────┘
+                      │
+               ┌──────┴──────┐
+               │             │
+               ▼             ▼
+        ┌──────────┐   ┌──────────┐
+        │  Empty   │   │  Custom  │
+        │  Input   │   │  Prompt  │
+        │  → Use   │   │          │
+        │ DEFAULT  │   │          │
+        └────┬─────┘   └────┬─────┘
+             │              │
+             └──────┬───────┘
+                    │
+                    ▼
+           ┌─────────────────────┐
+           │ Pass to generate_   │
+           │ video(prompt)       │
+           └─────────────────────┘
+```
+
+### 3. API Task Submission Phase
+```
+┌─────────────────────────────────────────────────────────┐
+│              Configure DashScope Client                  │
+├─────────────────────────────────────────────────────────┤
+│  dashscope.api_key = API_KEY                            │
+│  dashscope.base_http_api_url = BASE_URL                 │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│              Submit Video Generation Task                │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  VideoSynthesis.call(                                   │
+│      model="wan2.6-t2v",                                │
+│      prompt=user_prompt                                 │
+│  )                                                      │
+│                                                         │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────┐
+│              Response Validation                         │
+├─────────────────────────────────────────────────────────┤
+│  IF status_code == 200:                                 │
+│      → Extract task_id                                  │
+│      → Proceed to Polling                               │
+│  ELSE:                                                  │
+│      → Print error message                              │
+│      → Return None                                      │
+└────────────────────────────┬────────────────────────────┘
+                             │
+                             ▼
+```
+
+### 4. Polling Loop Phase
+```
+┌─────────────────────┐
+│ Start Polling       │
+│ Loop                │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐     ┌─────────────────────┐
+│ Wait 5 Seconds      │────▶│ Check Task Status   │
+│ (time.sleep(5))     │     │ VideoSynthesis.fetch│
+└─────────────────────┘     │ (task_id)           │
+                            └──────────┬──────────┘
+                                       │
+                                       ▼
+                            ┌─────────────────────┐
+                            │ Parse Status:       │
+                            │ - PENDING           │
+                            │ - RUNNING           │
+                            │ - SUCCEEDED         │
+                            │ - FAILED            │
+                            └──────────┬──────────┘
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    │                  │                  │
+                    ▼                  ▼                  ▼
+            ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+            │   PENDING    │   │   RUNNING    │   │   SUCCEEDED  │
+            │   or RUNNING │   │              │   │              │
+            │              │   │              │   │              │
+            │  Print status│   │  Print status│   │  Extract URL │
+            │  Continue loop│  │  Continue loop│  │  Download    │
+            └──────┬───────┘   └──────┬───────┘   │  Return URL  │
+                   │                  │           └──────────────┘
+                   └──────────────────┘
+                                       │
+                                       ▼
+                              ┌──────────────┐
+                              │    FAILED    │
+                              │              │
+                              │ Print error  │
+                              │ Return None  │
+                              └──────────────┘
+```
+
+### 5. Video Download Phase
+```
+┌─────────────────────┐
+│ Extract video_url   │
+│ from response       │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ HTTP GET Request    │
+│ (streaming)         │
+│ stream=True         │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Write Chunks to     │
+│ File (8KB chunks)   │
+│ generated_video.mp4 │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Print Success       │
+│ Message             │
+│ - File path         │
+│ - Video URL         │
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│ Return to Main Loop │
+│ (Prompt for next)   │
+└─────────────────────┘
+```
+
+## Data Flow Summary
+
+```
+┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌─────────┐
+│  User   │───▶│  Prompt  │───▶│  API     │───▶│  Task    │───▶│  Video  │
+│  Input  │    │  Text    │    │  Submit  │    │  Poll    │    │  File   │
+└─────────┘    └──────────┘    └──────────┘    └──────────┘    └─────────┘
+                                    │              │
+                                    ▼              ▼
+                            ┌──────────────┐  ┌──────────────┐
+                            │ Cloud AI     │  │ Status Check │
+                            │ (Wan2.6-t2v) │  │ every 5 sec  │
+                            └──────────────┘  └──────────────┘
+```
+
+## Key Components
+
+### 1. DashScope VideoSynthesis API
+| Aspect | Details |
+|--------|---------|
+| **Model** | `wan2.6-t2v` |
+| **API Class** | `VideoSynthesis` |
+| **Endpoint** | `https://dashscope-intl.aliyuncs.com/api/v1` |
+| **Method** | Asynchronous with polling |
+
+### 2. Task Lifecycle
+| Status | Description | Action |
+|--------|-------------|--------|
+| `PENDING` | Task queued | Continue polling |
+| `RUNNING` | Video generating | Continue polling |
+| `SUCCEEDED` | Video ready | Download & save |
+| `FAILED` | Generation error | Print error, exit |
+
+### 3. Request Parameters
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `model` | `wan2.6-t2v` | Text-to-video model |
+| `prompt` | User input | Video description |
+
+### 4. Response Structure
+```python
+response.output.task_id       # Unique task identifier
+response.output.task_status   # PENDING/RUNNING/SUCCEEDED/FAILED
+response.output.video_url     # Download URL (when SUCCEEDED)
+response.output.message       # Error message (when FAILED)
+```
+
+## Error Handling
+
+| Error Type | Handling |
+|------------|----------|
+| **Task Submission Failed** | Print status code and message |
+| **Status Check Failed** | Print error, return None |
+| **Task Failed** | Print failure reason |
+| **Download Failed** | Exception raised, caught in main |
+| **Keyboard Interrupt** | Graceful exit with "Goodbye!" |
+
+## File Structure
+
+```
+video_generation/
+├── simple_video_gen.py       # Main application
+├── install.sh                # Installation script
+├── requirements.txt          # Python dependencies
+├── .env                      # Environment variables (API key)
+├── setup.txt                 # Original setup notes
+└── generated_video.mp4       # Output (created on run)
+```
+
+## Environment Variables
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `DASHSCOPE_API_KEY` | API authentication | Yes (or hardcoded) |
+| `DASHSCOPE_BASE_URL` | API endpoint | Yes (or hardcoded) |
+
+## Dependencies
+
+```
+dashscope>=1.14.0      # Alibaba Cloud AI SDK
+requests>=2.28.0       # HTTP requests for video download
+python-dotenv>=1.0.0   # Environment variable loading
+```
+
+## Usage Flow
+
+```
+1. Start: python simple_video_gen.py
+2. Enter prompt: "A cat playing piano" (or press Enter for default)
+3. Wait: Task submitted, polling begins
+4. Polling: Status updates every 5 seconds
+5. Complete: Video downloaded to generated_video.mp4
+6. Loop: Prompt for next video or type 'quit' to exit
+```
+
+## Timing Characteristics
+
+| Phase | Typical Duration |
+|-------|-----------------|
+| Task Submission | < 1 second |
+| PENDING → RUNNING | 5-15 seconds |
+| RUNNING → SUCCEEDED | 1-3 minutes |
+| Download | 5-30 seconds (depends on size) |
+| **Total** | **1-4 minutes** |
+
+## Security Considerations
+
+1. **API Key**: Currently hardcoded in script (should use `.env`)
+2. **No Input Sanitization**: User prompt sent directly to API
+3. **Rate Limiting**: Not implemented (relies on API limits)

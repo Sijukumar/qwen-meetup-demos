@@ -1,0 +1,14 @@
+# 1. Navigate to the project folder
+cd /Users/sijukumarkumaran/Documents/Hands-On/QwenMeetup/Demos/video_generation
+
+# 2. Make install script executable
+chmod +x install.sh
+
+# 3. Run the install script
+./install.sh
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Run the script
+python simple_video_gen.py

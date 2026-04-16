@@ -1,0 +1,11 @@
+# Navigate to the folder
+cd /Users/sijukumarkumaran/Documents/Hands-On/QwenMeetup/Demos/image_generation
+
+# Make it executable and run
+chmod +x install.sh
+./install.sh
+
+# Edit .env and add your API key
+# Then run:
+source venv/bin/activate
+python simple_image_gen_v2.py

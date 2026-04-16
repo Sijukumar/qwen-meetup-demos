@@ -1,0 +1,373 @@
+================================================================================
+                    RAG CHATBOT WITH CHROMADB - WORKFLOW GUIDE
+================================================================================
+
+This document explains the complete workflow of the RAG Chatbot application.
+
+================================================================================
+1. ARCHITECTURE OVERVIEW
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           RAG CHATBOT SYSTEM                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │   USER       │───▶│   QWEN LLM   │───▶│   RESPONSE   │                   │
+│  │   QUERY      │    │   (qwen-plus)│    │   OUTPUT     │                   │
+│  └──────────────┘    └──────┬───────┘    └──────────────┘                   │
+│                             │                                                │
+│                             ▼                                                │
+│                    ┌──────────────────┐                                      │
+│                    │   CONTEXT FROM   │                                      │
+│                    │    CHROMADB      │                                      │
+│                    └────────┬─────────┘                                      │
+│                             │                                                │
+│                             ▼                                                │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │   DOCUMENT   │───▶│  EMBEDDING   │───▶│   VECTOR     │                   │
+│  │   UPLOAD     │    │  (text-emb)  │    │   STORAGE    │                   │
+│  └──────────────┘    └──────────────┘    └──────────────┘                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+2. COMPONENTS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ COMPONENT           │ DESCRIPTION                                           │
+├─────────────────────┼───────────────────────────────────────────────────────┤
+│ simple_rag_chromadb │ Main Python script - CLI chatbot application          │
+│ .env                │ Configuration file - API keys, model settings         │
+│ chroma_db/          │ Local vector database storage (auto-created)          │
+│ venv/               │ Python virtual environment                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+3. DATA FLOW
+================================================================================
+
+STEP 1: DOCUMENT INGESTION
+──────────────────────────
+User uploads document → PDF/Text extraction → Text chunking → 
+Embedding generation → Vector storage in ChromaDB
+
+    /upload command
+         │
+         ▼
+    ┌─────────────────┐
+    │  File Selection │ (macOS picker / manual path / drag-drop)
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  File Parsing   │ PDF: pypdf | Text: direct read
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  Text Chunking  │ Large docs: 2000 chars | Small: 1000 chars
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  Batch Embedding│ DashScope text-embedding-v3 (batch size: 10)
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  ChromaDB Store │ Persistent local storage
+    └─────────────────┘
+
+
+STEP 2: QUERY PROCESSING
+────────────────────────
+User asks question → Vector similarity search → Context retrieval → 
+LLM generation with context → Response output
+
+    User Query
+         │
+         ▼
+    ┌─────────────────┐
+    │  Embed Query    │ DashScope text-embedding-v3
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  Vector Search  │ ChromaDB similarity search (top 5 results)
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  Build Context  │ Combine retrieved chunks with citations
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  LLM Generation │ Qwen-plus with system prompt + context
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │  Response       │ Return answer with source citations
+    └─────────────────┘
+
+================================================================================
+4. DETAILED WORKFLOW STEPS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: STARTUP                                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. Load environment variables from .env file                               │
+│     - DASHSCOPE_API_KEY: Authentication key                                │
+│     - DASHSCOPE_BASE_URL: API endpoint (Singapore region)                  │
+│     - LLM_MODEL: Model for generation (qwen-plus)                          │
+│     - EMBEDDING_MODEL: Model for embeddings (text-embedding-v3)            │
+│                                                                              │
+│  2. Initialize OpenAI client (DashScope compatible)                        │
+│                                                                              │
+│  3. Initialize ChromaDB manager                                             │
+│     - Create/Load persistent storage at ./chroma_db                        │
+│     - Configure embedding function (DashScope)                             │
+│     - Get/Create collection named "knowledge_base"                         │
+│                                                                              │
+│  4. Display startup banner and current status                               │
+│     - Model in use                                                          │
+│     - Document count in knowledge base                                      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 2: DOCUMENT UPLOAD                                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  User types: /upload                                                        │
+│                                                                              │
+│  Options presented:                                                         │
+│    1. Enter file path manually                                             │
+│    2. Drag & drop file                                                     │
+│    3. Use macOS file picker                                                │
+│                                                                              │
+│  Processing steps:                                                          │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ A. FILE READING                                                     │    │
+│  │    - PDF files: Extract text from each page using pypdf            │    │
+│  │    - Text files: Read content directly                             │    │
+│  │    - Show extraction progress for large PDFs                       │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ B. TEXT CHUNKING                                                    │    │
+│  │    - Small documents (< 100K chars): 1000 char chunks              │    │
+│  │    - Large documents (> 100K chars): 2000 char chunks              │    │
+│  │    - Overlap: 10% of chunk size for context continuity             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ C. BATCH EMBEDDING                                                  │    │
+│  │    - Process chunks in batches of 10 (API limit)                   │    │
+│  │    - Generate embeddings using text-embedding-v3                   │    │
+│  │    - Show progress: "Progress: X/Y chunks added..."                │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ D. VECTOR STORAGE                                                   │    │
+│  │    - Store in ChromaDB with metadata (source file, chunk index)    │    │
+│  │    - Persistent storage survives application restarts              │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 3: QUESTION ANSWERING                                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  User types: "What is the refund policy?"                                   │
+│                                                                              │
+│  Processing steps:                                                          │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ A. VECTOR SEARCH                                                    │    │
+│  │    - Convert question to embedding                                 │    │
+│  │    - Search ChromaDB for similar vectors                           │    │
+│  │    - Retrieve top 5 most relevant chunks                           │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ B. CONTEXT BUILDING                                                 │    │
+│  │    - Format retrieved chunks as context                            │    │
+│  │    - Add source citations [Document 1], [Document 2], etc.         │    │
+│  │    - Build system prompt with context                              │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ C. LLM GENERATION                                                   │    │
+│  │    - Send to Qwen-plus model                                       │    │
+│  │    - Model uses context to generate answer                         │    │
+│  │    - Response includes citations from source documents             │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ D. CONVERSATION UPDATE                                              │    │
+│  │    - Add Q&A to conversation history                               │    │
+│  │    - Keep last 20 messages for context                             │    │
+│  │    - Enables follow-up questions                                   │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+5. AVAILABLE COMMANDS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ COMMAND           │ DESCRIPTION                                             │
+├───────────────────┼─────────────────────────────────────────────────────────┤
+│ /upload           │ Open file upload menu (3 options)                       │
+│ /add <path>       │ Add document from specified file path                   │
+│ /add-text <text>  │ Add text directly to knowledge base                     │
+│ /count            │ Show number of documents in knowledge base              │
+│ /clear            │ Clear all documents from knowledge base                 │
+│ /clear-history    │ Clear conversation history                              │
+│ /status           │ Show current settings (model, embedding, doc count)    │
+│ /help             │ Show all available commands                             │
+│ quit / exit       │ Exit the application                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+6. CONFIGURATION (.env)
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ VARIABLE           │ DEFAULT VALUE                        │ DESCRIPTION      │
+├────────────────────┼──────────────────────────────────────┼──────────────────┤
+│ DASHSCOPE_API_KEY  │ (required)                           │ Your API key     │
+│ DASHSCOPE_BASE_URL │ https://dashscope-intl.aliyuncs.com  │ Singapore region │
+│ LLM_MODEL          │ qwen-plus                            │ Generation model │
+│ EMBEDDING_MODEL    │ text-embedding-v3                    │ Embedding model  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+7. KEY CLASSES AND FUNCTIONS
+================================================================================
+
+ChromaDBManager Class:
+─────────────────────
+  __init__()           - Initialize ChromaDB with persistent storage
+  add_documents()      - Add documents in batches of 10
+  add_from_file()      - Parse and chunk PDF/Text files
+  search()             - Vector similarity search
+  get_document_count() - Return total documents
+  clear_collection()   - Reset knowledge base
+
+Main Functions:
+──────────────
+  get_api_key()        - Load API key from environment
+  get_base_url()       - Load API endpoint from environment
+  get_model()          - Load LLM model name
+  create_client()      - Initialize OpenAI client for DashScope
+  chat_with_rag()      - Process query with RAG pipeline
+  main()               - CLI loop and command handling
+
+================================================================================
+8. ERROR HANDLING
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ERROR                        │ HANDLING                                     │
+├──────────────────────────────┼──────────────────────────────────────────────┤
+│ API Key missing              │ Exit with error message                      │
+│ File not found               │ Show error, prompt for correct path          │
+│ PDF parsing error            │ Show error, return 0 chunks                  │
+│ Embedding API batch limit    │ Auto-batch in groups of 10                   │
+│ Large document (>100K chars) │ Auto-increase chunk size to 2000             │
+│ Empty file                   │ Show message, skip processing                │
+│ Conversation too long        │ Auto-trim to last 20 messages                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+9. RUN INSTRUCTIONS
+================================================================================
+
+Step 1: Navigate to project
+──────────────────────────
+    cd /Users/sijukumarkumaran/Documents/Hands-On/QwenMeetup/0.SimpleAPICalls/rag_chatbot_v2
+
+Step 2: Activate virtual environment
+────────────────────────────────────
+    source venv/bin/activate
+
+Step 3: Run the chatbot
+───────────────────────
+    python simple_rag_chromadb.py
+
+Step 4: Upload documents
+────────────────────────
+    Type: /upload
+    Select option 3 for macOS file picker
+
+Step 5: Ask questions
+─────────────────────
+    Type your question about the uploaded documents
+
+================================================================================
+10. EXAMPLE SESSION
+================================================================================
+
+$ python simple_rag_chromadb.py
+============================================================
+   RAG Chatbot with ChromaDB
+============================================================
+This chatbot uses:
+  - ChromaDB for local vector storage
+  - DashScope embeddings for document vectors
+  - Qwen LLM for response generation
+
+Type /upload to add files to your knowledge base
+Type /help for all commands
+------------------------------------------------------------
+Model: qwen-plus
+Embedding: text-embedding-v3
+------------------------------------------------------------
+Documents in knowledge base: 0
+------------------------------------------------------------
+
+You: /upload
+
+File Upload Options:
+  1. Enter file path manually
+  2. Drag & drop file (paste the path)
+  3. Use system file picker (macOS)
+
+Select option (1/2/3): 3
+
+Selected: /Users/user/Documents/company_policy.pdf
+
+Processing file: company_policy.pdf
+PDF has 45 pages, extracting text...
+✓ Extracted 125000 characters from PDF
+Large document detected, using chunk size: 2000
+Created 69 chunks from document
+  Progress: 69/69 chunks added...
+✓ Added 69 documents to ChromaDB
+
+You: What is the remote work policy?
+
+Assistant: [Document 3]: The remote work policy allows employees to work from 
+home up to 3 days per week. Managers must approve remote work arrangements in 
+advance. Employees must maintain core hours of 10am-3pm in their local timezone.
+
+You: /count
+Documents in knowledge base: 69
+
+You: quit
+
+Goodbye!
+
+================================================================================
+                              END OF WORKFLOW GUIDE
+================================================================================

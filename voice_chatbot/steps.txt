@@ -1,0 +1,16 @@
+# 1. Navigate to the project folder
+cd /Users/sijukumarkumaran/Documents/Hands-On/QwenMeetup/Demos/voice_chatbot
+
+# 2. Make install script executable and run
+chmod +x install.sh
+./install.sh
+
+# Activate virtual environment
+source venv/bin/activate
+
+# macOS
+brew install portaudio
+
+# Run the voice chatbot
+python simple_voice_chat.py
+
